@@ -1,0 +1,125 @@
+x-base_service: &base_service
+    ports:
+      - "${WEBUI_PORT:-7870}:7860"
+    volumes:
+      - &v1 ./data:/data
+      - &v2 ./output:/output
+    stop_signal: SIGKILL
+    tty: true
+    deploy:
+      resources:
+        reservations:
+          devices:
+              - driver: nvidia
+                device_ids: ['0']
+                capabilities: [compute, utility]
+
+
+services:
+  chatbot:
+    build:
+      context: ./services/chatbot
+      dockerfile: Dockerfile
+    container_name: chatbot
+    tty: true
+    volumes:
+      - /app/node_modules 
+      - type: bind
+        source: ./
+        target: /app
+
+
+  text-generation-webui-docker:
+    image: atinoda/text-generation-webui:default-nvidia # Specify variant as the :tag
+    container_name: text-generation-webui
+    environment:
+      - EXTRA_LAUNCH_ARGS="--listen --verbose" # Custom launch args (e.g., --model MODEL_NAME)
+      #- BUILD_EXTENSIONS_LIVE="coqui_tts whisper_stt" # Install named extensions during every container launch. THIS WILL SIGNIFICANLTLY SLOW LAUNCH TIME AND IS NORMALLY NOT REQUIRED.
+      #- OPENEDAI_EMBEDDING_MODEL=intfloat/e5-large-v2  # Specify custom model for embeddings
+      #- OPENEDAI_EMBEDDING_DEVICE=cuda  # Specify processing device for embeddings
+    init: true  # Runs an init process (PID 1) that forwards signals and reaps processes
+    ports:
+      - 7865:7860  # Default web port
+      #- 5000:5000  # Default API port
+      #- 5005:5005  # Default streaming port
+    volumes:
+      - ./services/text-generation-webui/config/cache:/root/.cache  # WARNING: Libraries may save large files here!
+      - ./services/text-generation-webui/config/characters:/app/characters
+      - ./services/text-generation-webui/config/instruction-templates:/app/instruction-templates
+      - ./services/text-generation-webui/config/loras:/app/loras
+      - ./services/text-generation-webui/config/models:/app/models  # WARNING - very large files!
+      - ./services/text-generation-webui/config/presets:/app/presets
+      - ./services/text-generation-webui/config/prompts:/app/prompts
+      - ./services/text-generation-webui/config/training:/app/training
+      #- ./services/text-generation-webui/config/extensions:/app/extensions  # Persist all extensions
+      #- ./services/text-generation-webui/config/extensions/coqui_tts:/app/extensions/coqui_tts  # Persist a single extension
+    logging:
+      driver:  json-file
+      options:
+        max-file: "3"   # number of files or file count
+        max-size: "10M"
+
+    ### HARDWARE ACCELERATION: comment or uncomment according to your hardware! ###
+
+    ### CPU only ###
+    # Nothing required - comment out the other hardware sections.
+
+    ### Nvidia (default) ###
+    deploy:
+        resources:
+          reservations:
+            devices:
+              - driver: nvidia
+                device_ids: ['0']
+                capabilities: [gpu]
+
+    ### AMD ROCM or Intel Arc ###
+    #    stdin_open: true
+    #    group_add:
+    #- video
+    #    tty: true
+    #    ipc: host
+    #    devices:
+    #- /dev/kfd
+    #- /dev/dri 
+    #    cap_add: 
+    #- SYS_PTRACE
+    #    security_opt:
+    #- seccomp=unconfined
+
+  download:
+    build: ./services/download/
+    profiles: ["download"]
+    volumes:
+      - *v1
+
+  auto: &automatic
+    <<: *base_service
+    profiles: ["auto"]
+    build: ./services/AUTOMATIC1111
+    image: sd-auto:78
+    environment:
+      - CLI_ARGS=--allow-code --medvram --xformers --enable-insecure-extension-access --api
+
+  auto-cpu:
+    <<: *automatic
+    profiles: ["auto-cpu"]
+    deploy: {}
+    environment:
+      - CLI_ARGS=--no-half --precision full --allow-code --enable-insecure-extension-access --api
+
+  comfy: &comfy
+    <<: *base_service
+    profiles: ["comfy"]
+    build: ./services/comfy/
+    image: sd-comfy:7
+    environment:
+      - CLI_ARGS=
+
+
+  comfy-cpu:
+    <<: *comfy
+    profiles: ["comfy-cpu"]
+    deploy: {}
+    environment:
+      - CLI_ARGS=--cpu

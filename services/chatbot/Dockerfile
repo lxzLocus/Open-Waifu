@@ -7,6 +7,6 @@ COPY . .
 RUN apt-get update && apt-get install -y git sudo
 RUN git config --system core.longpaths true
 
-RUN npm install
+#RUN npm install
 
-CMD ["npm", "start"]
+#CMD ["npm", "start"]

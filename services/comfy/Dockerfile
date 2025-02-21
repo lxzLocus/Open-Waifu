@@ -1,21 +1,22 @@
+FROM pytorch/pytorch:2.3.0-cuda12.1-cudnn8-runtime
 
-FROM ubuntu:22.04
+ENV DEBIAN_FRONTEND=noninteractive PIP_PREFER_BINARY=1
 
-# Install dependencies
-RUN apt-get update && apt-get install --no-install-recommends -y \
-    python3 python3-pip python3-venv git
+RUN apt-get update && apt-get install -y git && apt-get clean
 
-# Set up working directory
-WORKDIR /app
+ENV ROOT=/stable-diffusion
+RUN --mount=type=cache,target=/root/.cache/pip \
+    git clone https://github.com/comfyanonymous/ComfyUI.git ${ROOT} && \
+    cd ${ROOT} && \
+    git checkout master && \
+    git reset --hard 276f8fce9f5a80b500947fb5745a4dde9e84622d && \
+    pip install -r requirements.txt
 
-# Copy application files
-COPY . .
+WORKDIR ${ROOT}
+COPY . /docker/
+RUN chmod u+x /docker/entrypoint.sh && cp /docker/extra_model_paths.yaml ${ROOT}
 
-# Install Python dependencies
-RUN pip3 install --no-cache-dir -r requirements.txt
-
-# Expose the necessary port
-EXPOSE 5000
-
-# Command to run the application
-CMD ["python3", "app.py"]
+ENV NVIDIA_VISIBLE_DEVICES=all PYTHONPATH="${PYTHONPATH}:${PWD}" CLI_ARGS=""
+EXPOSE 7860
+ENTRYPOINT ["/docker/entrypoint.sh"]
+CMD python -u main.py --listen --port 7860 ${CLI_ARGS}
