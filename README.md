@@ -1,5 +1,12 @@
 # Open-Waifu
 
+## Abstruct
+
+character chat bot with stable diffusion
+
+Text-generation-webuiとstable diffusionを利用したキャラクターチャットボットのバックエンドの実現
+
+
 ## Start Docker
 
 `docker compose up -d`
